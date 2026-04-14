@@ -143,6 +143,7 @@
         <div class="card"><b>الطاقة</b><span id="lives">3</span></div>
         <div class="card"><b>أفضل نتيجة</b><span id="best">0</span></div>
       </section>
+      <button class="start-btn" id="soundBtn" style="margin-top:-0.35rem;justify-self:start">🔊 الصوت: يعمل</button>
 
       <section class="arena">
         <canvas id="gameCanvas" width="960" height="540"></canvas>
@@ -169,6 +170,7 @@
       const bestEl = document.getElementById("best");
       const overlay = document.getElementById("overlay");
       const startBtn = document.getElementById("startBtn");
+      const soundBtn = document.getElementById("soundBtn");
 
       const keys = {};
       const stars = Array.from({ length: 120 }, () => ({
@@ -191,6 +193,36 @@
       let shootCooldown = 0;
       let lastTime = 0;
       let best = Number(localStorage.getItem("meteor-best") || 0);
+      let soundEnabled = true;
+      bestEl.textContent = best;
+
+      const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+      function playSfx(type) {
+        if (!soundEnabled || audioCtx.state !== "running") return;
+        const oscillator = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        oscillator.connect(gain);
+        gain.connect(audioCtx.destination);
+
+        const now = audioCtx.currentTime;
+        const presets = {
+          shoot: { freq: 560, end: 300, duration: 0.07, gain: 0.04, wave: "square" },
+          boom: { freq: 180, end: 70, duration: 0.18, gain: 0.08, wave: "sawtooth" },
+          pickup: { freq: 620, end: 900, duration: 0.12, gain: 0.05, wave: "triangle" },
+          hurt: { freq: 210, end: 120, duration: 0.2, gain: 0.08, wave: "square" },
+          over: { freq: 260, end: 60, duration: 0.45, gain: 0.09, wave: "sine" },
+        };
+        const p = presets[type] || presets.shoot;
+        oscillator.type = p.wave;
+        oscillator.frequency.setValueAtTime(p.freq, now);
+        oscillator.frequency.exponentialRampToValueAtTime(Math.max(40, p.end), now + p.duration);
+        gain.gain.setValueAtTime(p.gain, now);
+        gain.gain.exponentialRampToValueAtTime(0.0001, now + p.duration);
+        oscillator.start(now);
+        oscillator.stop(now + p.duration);
+      }
+
       bestEl.textContent = best;
 
       function resetGame() {
@@ -320,6 +352,7 @@
         shootCooldown -= delta;
         if ((keys[" "] || keys.Spacebar) && shootCooldown <= 0) {
           bullets.push({ x: player.x, y: player.y - player.h / 2, speed: 560 });
+          playSfx("shoot");
           shootCooldown = 0.18;
         }
 
@@ -365,6 +398,7 @@
               if (meteor.hp <= 0) {
                 meteor.y = canvas.height + 999;
                 score += 10;
+                playSfx("boom");
                 if (score % 120 === 0) {
                   level += 1;
                 }
@@ -387,6 +421,7 @@
           ) {
             meteor.y = canvas.height + 999;
             lives -= 1;
+            playSfx("hurt");
           }
         }
 
@@ -400,6 +435,7 @@
             pickup.y = canvas.height + 999;
             lives = Math.min(5, lives + 1);
             score += 15;
+            playSfx("pickup");
           }
         }
 
@@ -441,6 +477,7 @@
         overlay.querySelector("h1").textContent = "انتهت اللعبة";
         overlay.querySelector("p").textContent = `نتيجتك النهائية: ${score} | أفضل نتيجة: ${best}`;
         startBtn.textContent = "إعادة اللعب";
+        playSfx("over");
       }
 
       function startGame() {
@@ -458,6 +495,13 @@
       });
 
       startBtn.addEventListener("click", startGame);
+      soundBtn.addEventListener("click", async () => {
+        if (audioCtx.state !== "running") {
+          await audioCtx.resume();
+        }
+        soundEnabled = !soundEnabled;
+        soundBtn.textContent = soundEnabled ? "🔊 الصوت: يعمل" : "🔇 الصوت: متوقف";
+      });
       resetGame();
       render(0);
     </script>
